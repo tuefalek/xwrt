@@ -1,4 +1,4 @@
-# xWRT — простая устновка/обновление/управление Mihomo на OpenWRT
+# xWRT — простой менеджер для Mihomo под OpenWRT
 
 Устанавливает [mihomo](https://github.com/MetaCubeX/mihomo) (Clash Meta) на роутер OpenWRT с прозрачным проксированием через tproxy + nftables. Трафик идёт через прокси автоматически — без настройки браузеров или устройств.
 
