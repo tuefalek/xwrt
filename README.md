@@ -1,6 +1,6 @@
 # xwrt — прозрачный прокси для OpenWRT на базе mihomo
 
-Устанавливает [mihomo](https://github.com/MetaCubeX/mihomo) (Clash Meta) на роутер OpenWRT с прозрачным проксированием всех клиентов через tproxy + nftables. Весь трафик идёт через прокси автоматически — без настройки браузеров или устройств.
+Устанавливает [mihomo](https://github.com/MetaCubeX/mihomo) (Clash Meta) на роутер OpenWRT с прозрачным проксированием через tproxy + nftables. Трафик идёт через прокси автоматически — без настройки браузеров или устройств.
 
 Протестировано на **OpenWRT 25.12 / Xiaomi AX3600 (aarch64)**.
 
@@ -10,38 +10,40 @@
 curl -sL https://raw.githubusercontent.com/tuefalek/xwrt/main/install-xwrt.sh | sh
 ```
 
-Или скачать и запустить файлом (работает надёжнее через pipe):
+Или скачать файлом (надёжнее при нестабильном соединении):
 
 ```sh
 curl -sL https://raw.githubusercontent.com/tuefalek/xwrt/main/install-xwrt.sh -o /tmp/install-xwrt.sh
 sh /tmp/install-xwrt.sh
 ```
 
-Скрипт задаст два вопроса: подтверждение архитектуры и ссылка на подписку.
+Скрипт задаст три вопроса: подтверждение архитектуры, ссылка на подписку, режим работы.
 
 ### Требования
 
-- OpenWRT 23.05+ (`apk`) или старше (`opkg`)
-- ~30 МБ свободного места
+- OpenWRT 23.05+ с `apk` (или `opkg` для более старых версий)
+- ~35 МБ свободного места
 - Подписка в формате mihomo / Clash Meta
 
-## Что делает установщик
+## Режимы работы
 
-1. Определяет архитектуру роутера (`amd64` / `arm64` / `armv7` / `mipsle-softfloat` / `mips-softfloat`)
-2. Устанавливает зависимости: `curl`, `kmod-nft-tproxy`
-3. Скачивает актуальный бинарник mihomo с GitHub
-4. Создаёт `/etc/mihomo/config.yaml` с готовыми rule-sets для РФ
-5. Создаёт procd init-скрипт `/etc/init.d/mihomo` (START=99, автозапуск)
-6. При старте поднимает nftables-таблицу `inet mihomo` и ip rule для tproxy
-7. Устанавливает CLI-утилиту `/usr/bin/xwrt`
+| Режим | Описание |
+|---|---|
+| `vpn` | Весь трафик через VPN, кроме российских сайтов (`category-ru`) |
+| `direct` | Только заблокированные сайты через VPN, остальное — напрямую |
 
-Весь трафик клиентов (TCP + UDP) перехватывается через tproxy на порт 7893. Приватные диапазоны и адреса из `exclude.lst` идут напрямую.
+Переключение в любой момент без переустановки:
+
+```sh
+xwrt mode vpn
+xwrt mode direct
+```
 
 ## После установки
 
 1. Откройте веб-интерфейс: `http://<IP роутера>:9090/ui`
-2. В группе **"Blocked"** выберите нужный прокси-сервер
-3. Остальные группы (YouTube, Telegram, AI…) используют этот же выбор по умолчанию
+2. В режиме **vpn** — выберите прокси в группе **"Заблок. сервисы"**
+3. В режиме **direct** — выберите прокси в группе **"PROXY"**
 
 ## Управление — xwrt
 
@@ -50,22 +52,26 @@ sh /tmp/install-xwrt.sh
 | `xwrt start` | Запустить |
 | `xwrt stop` | Остановить |
 | `xwrt restart` | Перезапустить |
-| `xwrt status` | Статус процесса, nftables, маршрутизация |
+| `xwrt status` | Статус: процесс, nftables, маршрутизация, текущий режим |
 | `xwrt log [N]` | Последние N строк лога (default 30) |
-| `xwrt watch` | Лог в реальном времени (Ctrl+C для выхода) |
-| `xwrt debug` | Включить подробный лог уровня info (в RAM, не на флеш) |
+| `xwrt watch` | Лог в реальном времени |
+| `xwrt debug` | Включить подробный лог info (в RAM, без перезапуска) |
 | `xwrt nodebug` | Вернуть лог на уровень warning |
-| `xwrt update-sub` | Обновить прокси из подписки |
+| `xwrt mode vpn` | Переключиться в режим VPN |
+| `xwrt mode direct` | Переключиться в режим Direct |
+| `xwrt sub` | Показать текущую ссылку на подписку |
+| `xwrt sub <url>` | Обновить подписку и перегенерировать конфиг |
+| `xwrt update-sub` | Перезагрузить подписку через API (без рестарта) |
 | `xwrt update-rules` | Обновить все rule-sets |
 | `xwrt update-bin` | Обновить бинарник mihomo до последней версии |
 | `xwrt version` | Версии mihomo и xwrt |
 
 ## Исключение клиентов
 
-Файл `/etc/mihomo/exclude.lst` — список IP-адресов и CIDR, которые обходят прокси и ходят напрямую. Формат: один адрес на строку, `#` — комментарий.
+Файл `/etc/mihomo/exclude.lst` — IP-адреса клиентов, которые обходят прокси. Формат: один адрес или CIDR на строку, `#` — комментарий.
 
 ```
-# Телевизор и игровая консоль — без прокси
+# Телевизор, игровая консоль — без прокси
 192.168.1.50
 192.168.1.51
 
@@ -73,11 +79,11 @@ sh /tmp/install-xwrt.sh
 192.168.2.0/24
 ```
 
-После изменения файла: `xwrt restart`.
+После изменения: `xwrt restart`.
 
 ## Свои правила маршрутизации
 
-В `config.yaml` секция `user@classical` — добавляйте домены и IP, которые должны идти через прокси:
+В каждом шаблоне есть секция `user@classical` — добавляйте домены/IP для принудительного проксирования:
 
 ```yaml
   user@classical:
@@ -85,29 +91,48 @@ sh /tmp/install-xwrt.sh
     behavior: classical
     payload:
       - DOMAIN-SUFFIX,example.com
-      - DOMAIN-SUFFIX,2ip.io
       - IP-CIDR,1.2.3.4/32,no-resolve
 ```
 
-После изменения конфига: `xwrt restart`.
+Файлы шаблонов: `/etc/mihomo/templates/config-vpn.yaml` и `config-direct.yaml`.  
+После правки шаблона: `xwrt mode vpn` (или `direct`) — пересоздаст конфиг из обновлённого шаблона.
+
+> **Внимание:** `xwrt mode ...` перегенерирует `config.yaml` из шаблона. Если вы редактировали `config.yaml` напрямую — изменения будут потеряны. Редактируйте только шаблоны.
 
 ## Уровни логирования
 
-По умолчанию `log-level: warning` — логи почти не пишутся, flash-память не изнашивается. Для диагностики:
+По умолчанию `log-level: warning` — на флеш почти ничего не пишется.
 
 ```sh
-xwrt debug   # переключить на info (через API, без перезапуска, в RAM)
-xwrt watch   # смотреть поток логов в реальном времени
+xwrt debug   # включить info-лог (через API, без перезапуска, всё в RAM)
+xwrt watch   # смотреть поток в реальном времени
 xwrt nodebug # вернуть warning
 ```
+
+## Совместимость с zapret
+
+[zapret](https://github.com/bol-van/zapret) и xwrt работают одновременно без конфликтов:
+
+- **mihomo** (приоритет mangle, до routing decision) перехватывает трафик в PREROUTING и направляет его через VPN-туннель или помечает как DIRECT
+- **zapret** работает в цепочках FORWARD/OUTPUT (приоритет filter, после mangle) и применяет DPI-обход к DIRECT-трафику, который mihomo не взял в туннель
+
+Порядок обработки пакета:
+```
+клиент → PREROUTING (mihomo tproxy) → [VPN туннель]
+                                    ↘ FORWARD → zapret DPI-обход → интернет
+```
+
+**Рекомендация:** если VPN-сервер использует порт 443 и zapret перехватывает весь TCP/443 в OUTPUT — добавьте IP VPN-серверов в исключения zapret (`/etc/zapret/config`), чтобы zapret не трогал шифрованный туннель mihomo.
+
+DNS (порт 53) явно исключён из tproxy — роутерный резолвер работает как обычно.
 
 ## Поддерживаемые архитектуры
 
 | Платформа | `uname -m` | mihomo бинарь |
 |---|---|---|
 | x86_64 (PC, VM, x86 роутер) | `x86_64` | `amd64` |
-| Qualcomm IPQ8071A, RPi 4, AArch64 | `aarch64` | `arm64` |
-| Xiaomi AX3600, большинство современных | `aarch64` | `arm64` |
+| Qualcomm IPQ8071A, AArch64 | `aarch64` | `arm64` |
+| Xiaomi AX3600, RPi 4 и др. | `aarch64` | `arm64` |
 | Старые ARM (Cortex-A7/A9) | `armv7l` | `armv7` |
 | MIPS little-endian (MT7620, MT7621) | `mipsel` | `mipsle-softfloat` |
 | MIPS big-endian (AR9xxx, QCA9xxx) | `mips` | `mips-softfloat` |
@@ -115,14 +140,31 @@ xwrt nodebug # вернуть warning
 ## Технические детали
 
 **TProxy + nftables:**
-- nftables таблица `inet mihomo`, цепочка `prerouting` (priority mangle)
-- tproxy на порт 7893, fwmark `0x162`
+- Таблица `inet mihomo`, цепочка `prerouting` (priority mangle)
+- tproxy порт 7893, fwmark `0x162`
 - ip rule: `fwmark 0x162 → table 100`; ip route table 100: `local default via lo`
-- защита от петли через fwmark check
+- Порт 53 (DNS) явно исключён → роутерный резолвер не затронут
+- Приватные диапазоны всегда обходят mihomo
 
-**DNS:** mihomo слушает на 0.0.0.0:7874 в режиме fake-ip (198.18.0.0/16). DNS роутера не трогается.
+**Запись на флеш:** только при обновлении подписки (~раз в час) и rule-sets (~раз в сутки). Постоянной записи логов нет.
 
-**Запись на флеш:** только при обновлении подписки (~раз в час) и rule-sets (~раз в сутки). Постоянной записи нет.
+## Структура файлов на роутере
+
+```
+/usr/bin/mihomo                       ← бинарник
+/usr/bin/xwrt                         ← CLI менеджер
+/etc/init.d/mihomo                    ← procd init script
+/etc/mihomo/
+  config.yaml                         ← активный конфиг (генерируется из шаблона)
+  sub.txt                             ← ссылка на подписку
+  mode.txt                            ← текущий режим (vpn/direct)
+  exclude.lst                         ← IP-адреса клиентов-исключений
+  templates/
+    config-vpn.yaml                   ← шаблон режима VPN
+    config-direct.yaml                ← шаблон режима Direct
+  proxy-providers/proxy-sub.yml       ← кешированная подписка
+  ui/                                 ← веб-интерфейс zashboard
+```
 
 ## Удаление
 
@@ -134,3 +176,11 @@ rm -rf /etc/mihomo
 ```
 
 nftables-таблица и ip rule удаляются автоматически при `xwrt stop`.
+
+---
+
+## Thanks
+
+- [zxc-rv/assets](https://github.com/zxc-rv/assets) — шаблоны конфигов mihomo и rule-sets для РФ
+- [jameszeroX/XKeen](https://github.com/jameszeroX/XKeen) — вдохновение и архитектурные идеи
+- [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) — ядро прокси

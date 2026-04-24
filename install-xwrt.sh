@@ -5,10 +5,8 @@ MIHOMO_BIN="/usr/bin/mihomo"
 MIHOMO_CFG="/etc/mihomo"
 INIT_SCRIPT="/etc/init.d/mihomo"
 XWRT_BIN="/usr/bin/xwrt"
-XWRT_VERSION="1.0.0"
-CTRL_PORT="9090"
+REPO="https://raw.githubusercontent.com/tuefalek/xwrt/main"
 
-# Цвета через \x1b (hex) — busybox printf не поддерживает \033 (octal) в некоторых сборках
 ok()   { printf '  \x1b[92m+\x1b[0m %s\n' "$1"; }
 info() { printf '  \x1b[96m>\x1b[0m %s\n' "$1"; }
 warn() { printf '  \x1b[93m!\x1b[0m %s\n' "$1"; }
@@ -19,7 +17,7 @@ printf     '\x1b[96m%s\x1b[0m\n' "║     xwrt installer — mihomo for OpenWRT 
 printf     '\x1b[96m%s\x1b[0m\n' "╚══════════════════════════════════════════╝"
 printf '\n'
 
-# ─── Определение архитектуры ─────────────────────────────────────────────────
+# ─── Архитектура ─────────────────────────────────────────────────────────────
 RAW_ARCH=$(uname -m)
 case "$RAW_ARCH" in
     x86_64)         ARCH="amd64" ;;
@@ -27,29 +25,29 @@ case "$RAW_ARCH" in
     armv7*|armv7l)  ARCH="armv7" ;;
     mipsel|mipsle)  ARCH="mipsle-softfloat" ;;
     mips)           ARCH="mips-softfloat" ;;
-    *)              err "Неизвестная архитектура: $RAW_ARCH"; exit 1 ;;
+    *)              err "Неизвестная архитектура: $RAW_ARCH" ;;
 esac
 
 info "Архитектура: ${RAW_ARCH} -> mihomo-linux-${ARCH}"
 printf '  \x1b[96m?\x1b[0m Верно? [Y/n]: '
 read -r ARCH_OK < /dev/tty
 case "$ARCH_OK" in
-    n|N) err "Прервано. Укажите архитектуру вручную."; exit 1 ;;
+    n|N) err "Прервано. Укажите архитектуру вручную." ;;
 esac
 
 printf '\n'
 
 # ─── Проверяем: уже установлен? ──────────────────────────────────────────────
-MODE="install"
+MODE_INSTALL="install"
 if [ -f "$MIHOMO_BIN" ]; then
     CURRENT_VER=$("$MIHOMO_BIN" -v 2>/dev/null | awk '{print $3}')
     warn "mihomo уже установлен (${CURRENT_VER})"
     printf '  \x1b[96m?\x1b[0m Переустановить? config.yaml будет сохранён как .bak [y/N]: '
     read -r REINSTALL < /dev/tty
     case "$REINSTALL" in
-        y|Y) MODE="reinstall" ;;
+        y|Y) MODE_INSTALL="reinstall" ;;
         *)
-            warn "Отменено. Для обновления бинаря: xwrt update-bin"
+            warn "Отменено. Для обновления: xwrt update-bin"
             exit 0
             ;;
     esac
@@ -58,19 +56,46 @@ fi
 printf '\n'
 
 # ─── Ссылка на подписку ──────────────────────────────────────────────────────
-printf '  \x1b[96m?\x1b[0m Ссылка на подписку mihomo: '
-read -r SUB_URL < /dev/tty
-[ -z "$SUB_URL" ] && err "Ссылка не может быть пустой"
+EXISTING_SUB=$(cat "${MIHOMO_CFG}/sub.txt" 2>/dev/null)
+if [ -n "$EXISTING_SUB" ] && [ "$MODE_INSTALL" = "reinstall" ]; then
+    printf '  \x1b[96m?\x1b[0m Подписка [Enter = оставить текущую]: '
+    read -r SUB_URL < /dev/tty
+    [ -z "$SUB_URL" ] && SUB_URL="$EXISTING_SUB"
+else
+    printf '  \x1b[96m?\x1b[0m Ссылка на подписку mihomo: '
+    read -r SUB_URL < /dev/tty
+    [ -z "$SUB_URL" ] && err "Ссылка не может быть пустой"
+fi
+
+printf '\n'
+
+# ─── Выбор режима ────────────────────────────────────────────────────────────
+EXISTING_MODE=$(cat "${MIHOMO_CFG}/mode.txt" 2>/dev/null)
+if [ -n "$EXISTING_MODE" ] && [ "$MODE_INSTALL" = "reinstall" ]; then
+    printf '  \x1b[96m?\x1b[0m Режим [Enter = оставить текущий: %s]: ' "$EXISTING_MODE"
+    read -r MODE_INPUT < /dev/tty
+    [ -z "$MODE_INPUT" ] && MODE_INPUT="$EXISTING_MODE"
+else
+    printf '  \x1b[96m?\x1b[0m Режим работы:\n'
+    printf '       1) vpn    -- весь трафик через VPN, кроме RU (рекомендуется)\n'
+    printf '       2) direct -- только заблокированное через VPN\n'
+    printf '  \x1b[96m?\x1b[0m Выбор [1/2]: '
+    read -r MODE_INPUT < /dev/tty
+    case "$MODE_INPUT" in
+        2|direct) MODE_INPUT="direct" ;;
+        *)        MODE_INPUT="vpn" ;;
+    esac
+fi
 
 printf '\n'
 
 # ─── Бэкап при переустановке ─────────────────────────────────────────────────
-if [ "$MODE" = "reinstall" ]; then
+if [ "$MODE_INSTALL" = "reinstall" ]; then
     if [ -f "${MIHOMO_CFG}/config.yaml" ]; then
         cp "${MIHOMO_CFG}/config.yaml" "${MIHOMO_CFG}/config.yaml.bak"
-        ok "Конфиг сохранён: ${MIHOMO_CFG}/config.yaml.bak"
+        ok "Конфиг сохранён: config.yaml.bak"
     fi
-    info "Останавливаем текущий mihomo..."
+    info "Останавливаем mihomo..."
     "$INIT_SCRIPT" stop 2>/dev/null || true
 fi
 
@@ -88,173 +113,39 @@ LATEST=$(curl -s https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
 info "Загружаем mihomo ${LATEST} (${ARCH})..."
 URL="https://github.com/MetaCubeX/mihomo/releases/download/${LATEST}/mihomo-linux-${ARCH}-${LATEST}.gz"
 cd /tmp || exit 1
-curl -sL "$URL" -o mihomo.gz || err "Ошибка загрузки"
+curl -sL "$URL" -o mihomo.gz || err "Ошибка загрузки mihomo"
 gunzip -f mihomo.gz
 mv /tmp/mihomo "$MIHOMO_BIN"
 chmod +x "$MIHOMO_BIN"
 ok "mihomo ${LATEST} установлен"
 
 # ─── Директории ──────────────────────────────────────────────────────────────
-mkdir -p "${MIHOMO_CFG}/proxy-providers"
+mkdir -p "${MIHOMO_CFG}/proxy-providers" "${MIHOMO_CFG}/templates"
 
-# ─── config.yaml ─────────────────────────────────────────────────────────────
-# Heredoc без кавычек: ${SUB_URL}, ${CTRL_PORT}, ${MIHOMO_CFG} подставляются здесь
-info "Создаём config.yaml..."
-cat > "${MIHOMO_CFG}/config.yaml" << YAML
-log-level: warning
-allow-lan: true
-redir-port: 7892
-tproxy-port: 7893
-mixed-port: 7890
-find-process-mode: off
-unified-delay: true
-external-controller: 0.0.0.0:${CTRL_PORT}
-external-ui: ${MIHOMO_CFG}/ui
-external-ui-url: https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip
-profile: { store-selected: true }
+# ─── Скачиваем шаблоны ───────────────────────────────────────────────────────
+info "Скачиваем шаблоны конфигов..."
+curl -sL "${REPO}/templates/config-vpn.yaml" \
+    -o "${MIHOMO_CFG}/templates/config-vpn.yaml" \
+    || err "Ошибка загрузки config-vpn.yaml"
+curl -sL "${REPO}/templates/config-direct.yaml" \
+    -o "${MIHOMO_CFG}/templates/config-direct.yaml" \
+    || err "Ошибка загрузки config-direct.yaml"
+ok "Шаблоны установлены"
 
-dns:
-  enable: true
-  listen: 0.0.0.0:7874
-  enhanced-mode: fake-ip
-  fake-ip-range: 198.18.0.0/16
-  nameserver:
-    - 8.8.8.8
-    - 1.1.1.1
+# ─── Сохраняем подписку и применяем шаблон ───────────────────────────────────
+printf '%s\n' "$SUB_URL" > "${MIHOMO_CFG}/sub.txt"
+printf '%s\n' "$MODE_INPUT" > "${MIHOMO_CFG}/mode.txt"
 
-sniffer:
-  enable: true
-  sniff:
-    HTTP: { ports: [80, 8080] }
-    TLS: { ports: [443, 8443] }
-  skip-dst-address: [rule-set:telegram@ipcidr]
-
-anchors:
-  a1: &domain    { type: http, format: mrs,  behavior: domain,   interval: 86400 }
-  a2: &ipcidr    { type: http, format: mrs,  behavior: ipcidr,   interval: 86400 }
-  a3: &classical { type: http, format: text, behavior: classical, interval: 86400 }
-  a4: &inline    { type: inline, behavior: classical }
-
-proxy-providers:
-  proxy-sub:
-    type: http
-    url: "${SUB_URL}"
-    path: ${MIHOMO_CFG}/proxy-providers/proxy-sub.yml
-    interval: 3600
-    health-check:
-      enable: true
-      url: https://www.gstatic.com/generate_204
-      interval: 300
-      timeout: 2000
-      lazy: false
-      expected-status: 204
-    override:
-      udp: true
-      tfo: true
-
-proxy-groups:
-  - { name: "Blocked", type: select, include-all: true }
-  - { name: "YouTube",   type: select, include-all: true, proxies: [Blocked, DIRECT] }
-  - { name: "Discord",   type: select, include-all: true, proxies: [Blocked, DIRECT] }
-  - { name: "Twitch",    type: select, include-all: true, proxies: [DIRECT, Blocked] }
-  - { name: "Reddit",    type: select, include-all: true, proxies: [DIRECT, Blocked] }
-  - { name: "Meta",      type: select, include-all: true, proxies: [Blocked, DIRECT] }
-  - { name: "Spotify",   type: select, include-all: true, exclude-filter: "RU", proxies: [Blocked, DIRECT] }
-  - { name: "Speedtest", type: select, include-all: true, proxies: [Blocked, DIRECT] }
-  - { name: "Telegram",  type: select, include-all: true, proxies: [Blocked, DIRECT] }
-  - { name: "Steam",     type: select, include-all: true, proxies: [DIRECT, Blocked] }
-  - { name: "CDN",       type: select, include-all: true, proxies: [Blocked, PASS] }
-  - { name: "Google",    type: select, include-all: true, proxies: [PASS, Blocked] }
-  - { name: "GitHub",    type: select, include-all: true, proxies: [PASS, Blocked] }
-  - { name: "AI",        type: select, include-all: true, exclude-filter: "RU", proxies: [Blocked] }
-  - { name: "Twitter",   type: select, include-all: true, proxies: [Blocked, DIRECT] }
-
-rule-providers:
-  adlist@domain:       { <<: *domain,    url: https://github.com/zxc-rv/ad-filter/releases/latest/download/adlist.mrs }
-  akamai@domain:       { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/akamai.mrs }
-  akamai@ipcidr:       { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/akamai@ipcidr.mrs }
-  amazon@domain:       { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/amazon.mrs }
-  amazon@ipcidr:       { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/amazon@ipcidr.mrs }
-  category-ai@domain:  { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-ai-!cn.mrs }
-  cdn77@ipcidr:        { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/cdn77@ipcidr.mrs }
-  category-ru@domain:  { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-ru.mrs }
-  cloudflare@domain:   { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/cloudflare.mrs }
-  cloudflare@ipcidr:   { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/cloudflare@ipcidr.mrs }
-  digitalocean@domain: { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/digitalocean.mrs }
-  digitalocean@ipcidr: { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/digitalocean@ipcidr.mrs }
-  discord@classical:   { <<: *classical, url: https://github.com/zxc-rv/assets/raw/main/rules/discord.list }
-  fastly@domain:       { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/fastly.mrs }
-  fastly@ipcidr:       { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/fastly@ipcidr.mrs }
-  gcore@ipcidr:        { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/gcore@ipcidr.mrs }
-  github@domain:       { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/github.mrs }
-  google@domain:       { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/google.mrs }
-  google@ipcidr:       { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/google@ipcidr.mrs }
-  hetzner@domain:      { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/hetzner.mrs }
-  hetzner@ipcidr:      { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/hetzner@ipcidr.mrs }
-  meta@domain:         { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/meta.mrs }
-  meta@ipcidr:         { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/meta@ipcidr.mrs }
-  oracle@domain:       { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/oracle.mrs }
-  oracle@ipcidr:       { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/oracle@ipcidr.mrs }
-  ovh@ipcidr:          { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/ovh@ipcidr.mrs }
-  reddit@domain:       { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/reddit.mrs }
-  refilter@domain:     { <<: *domain,    url: https://github.com/legiz-ru/mihomo-rule-sets/raw/main/re-filter/domain-rule.mrs }
-  scaleway@ipcidr:     { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/scaleway@ipcidr.mrs }
-  spotify@domain:      { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/spotify.mrs }
-  steam@domain:        { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/steam.mrs }
-  speedtest@domain:    { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/speedtest.mrs }
-  telegram@domain:     { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/telegram.mrs }
-  telegram@ipcidr:     { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/telegram@ipcidr.mrs }
-  twitch@domain:       { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/twitch.mrs }
-  twitter@domain:      { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/twitter.mrs }
-  vodafone@ipcidr:     { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/vodafone@ipcidr.mrs }
-  vultr@ipcidr:        { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/vultr@ipcidr.mrs }
-  youtube@domain:      { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/youtube.mrs }
-  quic@inline:
-    type: inline
-    behavior: classical
-    payload:
-      - AND,((DST-PORT,443),(NETWORK,UDP))
-  user@classical:
-    type: inline
-    behavior: classical
-    payload:
-      - DOMAIN-SUFFIX,2ip.io
-
-rules:
-  - RULE-SET,adlist@domain,REJECT
-  - RULE-SET,quic@inline,REJECT-DROP
-  - OR,((DOMAIN-SUFFIX,gql.twitch.tv),(DOMAIN-SUFFIX,usher.ttvnw.net)),Blocked
-  - RULE-SET,category-ai@domain,AI
-  - RULE-SET,steam@domain,Steam
-  - RULE-SET,spotify@domain,Spotify
-  - RULE-SET,reddit@domain,Reddit
-  - RULE-SET,youtube@domain,YouTube
-  - RULE-SET,twitch@domain,Twitch
-  - RULE-SET,twitter@domain,Twitter
-  - RULE-SET,discord@classical,Discord
-  - RULE-SET,speedtest@domain,Speedtest
-  - OR,((RULE-SET,meta@domain),(RULE-SET,meta@ipcidr,no-resolve)),Meta
-  - OR,((RULE-SET,telegram@domain),(RULE-SET,telegram@ipcidr,no-resolve)),Telegram
-  - OR,((RULE-SET,refilter@domain),(RULE-SET,user@classical)),Blocked
-  - RULE-SET,github@domain,GitHub
-  - OR,((RULE-SET,google@domain),(RULE-SET,google@ipcidr)),Google
-  - RULE-SET,category-ru@domain,DIRECT
-  - OR,((RULE-SET,amazon@domain),(RULE-SET,amazon@ipcidr)),CDN
-  - OR,((RULE-SET,akamai@domain),(RULE-SET,akamai@ipcidr)),CDN
-  - OR,((RULE-SET,cloudflare@domain),(RULE-SET,cloudflare@ipcidr)),CDN
-  - OR,((RULE-SET,digitalocean@domain),(RULE-SET,digitalocean@ipcidr)),CDN
-  - OR,((RULE-SET,fastly@domain),(RULE-SET,fastly@ipcidr)),CDN
-  - OR,((RULE-SET,oracle@domain),(RULE-SET,oracle@ipcidr)),CDN
-  - OR,((RULE-SET,hetzner@domain),(RULE-SET,hetzner@ipcidr)),CDN
-  - RULE-SET,scaleway@ipcidr,CDN
-  - RULE-SET,ovh@ipcidr,CDN
-  - RULE-SET,vultr@ipcidr,CDN
-  - RULE-SET,vodafone@ipcidr,CDN
-  - RULE-SET,gcore@ipcidr,CDN
-  - RULE-SET,cdn77@ipcidr,CDN
-  - MATCH,DIRECT
-YAML
-ok "config.yaml создан"
+info "Генерируем config.yaml (режим: ${MODE_INPUT})..."
+awk -v url="$SUB_URL" '
+{
+    n = split($0, parts, "__SUB_URL__")
+    line = parts[1]
+    for (i = 2; i <= n; i++) line = line url parts[i]
+    print line
+}' "${MIHOMO_CFG}/templates/config-${MODE_INPUT}.yaml" > "${MIHOMO_CFG}/config.yaml" \
+    || err "Ошибка генерации config.yaml"
+ok "config.yaml создан (режим: ${MODE_INPUT})"
 
 # ─── exclude.lst ─────────────────────────────────────────────────────────────
 if [ ! -f "${MIHOMO_CFG}/exclude.lst" ]; then
@@ -267,6 +158,12 @@ if [ ! -f "${MIHOMO_CFG}/exclude.lst" ]; then
 EOF
     ok "exclude.lst создан"
 fi
+
+# ─── Скачиваем xwrt ──────────────────────────────────────────────────────────
+info "Устанавливаем xwrt..."
+curl -sL "${REPO}/xwrt.sh" -o "$XWRT_BIN" || err "Ошибка загрузки xwrt.sh"
+chmod +x "$XWRT_BIN"
+ok "xwrt установлен"
 
 # ─── /etc/init.d/mihomo ──────────────────────────────────────────────────────
 info "Создаём /etc/init.d/mihomo..."
@@ -296,8 +193,15 @@ _nft_up() {
     nft add table inet mihomo
     nft add chain inet mihomo prerouting \
         '{ type filter hook prerouting priority mangle; policy accept; }'
+
+    # Защита от петли — трафик самого mihomo
     nft add rule inet mihomo prerouting meta mark "$FWMARK" return
 
+    # DNS (порт 53) идёт через роутерный резолвер, не через mihomo
+    nft add rule inet mihomo prerouting meta l4proto udp udp dport 53 return
+    nft add rule inet mihomo prerouting meta l4proto tcp tcp dport 53 return
+
+    # Клиенты из exclude.lst — напрямую
     local excludes
     excludes=$(grep -v '^\s*#' "$EXCLUDE_LST" 2>/dev/null \
         | grep -v '^\s*$' | tr -d ' ' | tr '\n' ',' \
@@ -309,8 +213,11 @@ _nft_up() {
         nft add rule inet mihomo prerouting ip saddr @bypass_src return
     fi
 
+    # Приватные диапазоны — напрямую
     nft add rule inet mihomo prerouting \
         ip daddr '{ 0.0.0.0/8, 10.0.0.0/8, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/3 }' return
+
+    # Всё остальное → tproxy на mihomo
     nft add rule inet mihomo prerouting \
         meta l4proto '{ tcp, udp }' tproxy ip to :7893 meta mark set "$FWMARK"
 }
@@ -343,138 +250,6 @@ INITEOF
 chmod +x "$INIT_SCRIPT"
 ok "Init script создан"
 
-# ─── xwrt ────────────────────────────────────────────────────────────────────
-# Quoted heredoc ('XWRTEOF') — без подстановок внутри.
-# Переменные ARCH, CTRL_PORT, XWRT_VERSION вставляются через sed после записи.
-info "Устанавливаем xwrt..."
-cat > "$XWRT_BIN" << 'XWRTEOF'
-#!/bin/sh
-MIHOMO_BIN="/usr/bin/mihomo"
-MIHOMO_CFG="/etc/mihomo"
-MIHOMO_API="http://127.0.0.1:__CTRL_PORT__"
-INIT="/etc/init.d/mihomo"
-ARCH="__ARCH__"
-VERSION="__XWRT_VERSION__"
-
-_help() {
-    echo "xwrt $VERSION -- mihomo manager for OpenWRT"
-    echo ""
-    echo "  xwrt start          Запустить"
-    echo "  xwrt stop           Остановить"
-    echo "  xwrt restart        Перезапустить"
-    echo "  xwrt status         Статус"
-    echo "  xwrt log [N]        Последние N логов (default 30)"
-    echo "  xwrt watch          Следить за логом в реальном времени"
-    echo "  xwrt debug          Включить подробный лог (в RAM)"
-    echo "  xwrt nodebug        Выключить подробный лог"
-    echo "  xwrt update-sub     Обновить подписку"
-    echo "  xwrt update-rules   Обновить rule-sets"
-    echo "  xwrt update-bin     Обновить бинарник mihomo"
-    echo "  xwrt version        Версии"
-}
-
-_start()   { echo "Starting...";   "$INIT" start   && echo "OK"; }
-_stop()    { echo "Stopping...";   "$INIT" stop    && echo "OK"; }
-_restart() { echo "Restarting..."; "$INIT" restart && echo "OK"; }
-
-_status() {
-    local pid
-    pid=$(pgrep -f "mihomo -d" 2>/dev/null)
-    if [ -n "$pid" ]; then
-        echo "mihomo RUNNING (pid $pid)"
-        echo ""
-        echo "--- nftables ---"
-        nft list table inet mihomo 2>/dev/null | grep -v "^table" | head -15
-        echo ""
-        echo "--- routing ---"
-        ip rule show | grep "0x162" || echo "(no fwmark rule)"
-    else
-        echo "mihomo STOPPED"
-    fi
-}
-
-_log()   { logread | grep -i mihomo | tail -"${1:-30}"; }
-_watch() { echo "Ctrl+C to stop..."; logread -f | grep -i mihomo; }
-
-_debug_on() {
-    local res
-    res=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$MIHOMO_API/configs" \
-        -H "Content-Type: application/json" -d '{"log-level":"info"}')
-    [ "$res" = "204" ] && echo "Debug ON -- run: xwrt watch" || echo "Error (HTTP $res)"
-}
-
-_debug_off() {
-    local res
-    res=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$MIHOMO_API/configs" \
-        -H "Content-Type: application/json" -d '{"log-level":"warning"}')
-    [ "$res" = "204" ] && echo "Debug OFF" || echo "Error (HTTP $res)"
-}
-
-_update_sub() {
-    local res
-    res=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
-        "$MIHOMO_API/providers/proxies/proxy-sub")
-    [ "$res" = "204" ] && echo "Subscription updated" || echo "Error (HTTP $res)"
-}
-
-_update_rules() {
-    local res
-    res=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "$MIHOMO_API/providers/rules")
-    echo "Rules update triggered (HTTP $res)"
-}
-
-_update_bin() {
-    local latest current url
-    latest=$(curl -s https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
-        | grep '"tag_name"' | cut -d'"' -f4)
-    current=$("$MIHOMO_BIN" -v 2>/dev/null | awk '{print $3}')
-    echo "Current: $current  Latest: $latest"
-    [ "$latest" = "$current" ] && { echo "Already up to date."; return 0; }
-    "$INIT" stop 2>/dev/null
-    cd /tmp || return 1
-    url="https://github.com/MetaCubeX/mihomo/releases/download/${latest}/mihomo-linux-${ARCH}-${latest}.gz"
-    if curl -L "$url" -o mihomo.gz && gunzip -f mihomo.gz; then
-        mv /tmp/mihomo "$MIHOMO_BIN"
-        chmod +x "$MIHOMO_BIN"
-        echo "Updated to $latest"
-        "$INIT" start
-    else
-        echo "Download failed"
-        "$INIT" start
-    fi
-}
-
-_version() {
-    echo "mihomo: $("$MIHOMO_BIN" -v 2>/dev/null | awk '{print $3, $4, $5}')"
-    echo "xwrt:   $VERSION"
-}
-
-case "$1" in
-    start)        _start ;;
-    stop)         _stop ;;
-    restart)      _restart ;;
-    status)       _status ;;
-    log)          _log "$2" ;;
-    watch)        _watch ;;
-    debug)        _debug_on ;;
-    nodebug)      _debug_off ;;
-    update-sub)   _update_sub ;;
-    update-rules) _update_rules ;;
-    update-bin)   _update_bin ;;
-    version)      _version ;;
-    *)            _help ;;
-esac
-XWRTEOF
-
-# Подставляем переменные в сгенерированный xwrt
-sed -i \
-    -e "s|__CTRL_PORT__|${CTRL_PORT}|g" \
-    -e "s|__ARCH__|${ARCH}|g" \
-    -e "s|__XWRT_VERSION__|${XWRT_VERSION}|g" \
-    "$XWRT_BIN"
-chmod +x "$XWRT_BIN"
-ok "xwrt установлен"
-
 # ─── Автозапуск и старт ──────────────────────────────────────────────────────
 info "Включаем автозапуск..."
 "$INIT_SCRIPT" enable
@@ -485,13 +260,16 @@ sleep 2
 # ─── Итог ────────────────────────────────────────────────────────────────────
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d'/' -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
+
 printf '\n\x1b[92m%s\x1b[0m\n' "╔══════════════════════════════════════════╗"
 printf     '\x1b[92m%s\x1b[0m\n' "║           Установка завершена!           ║"
 printf     '\x1b[92m%s\x1b[0m\n' "╚══════════════════════════════════════════╝"
 printf '\n'
 xwrt status
 printf '\n'
-ok "Веб-интерфейс: http://${LAN_IP}:${CTRL_PORT}/ui"
+ok "Режим:         ${MODE_INPUT}"
+ok "Веб-интерфейс: http://${LAN_IP}:9090/ui"
 ok "Управление:    xwrt help"
+ok "Сменить режим: xwrt mode vpn|direct"
 ok "Исключения:    ${MIHOMO_CFG}/exclude.lst"
 printf '\n'
