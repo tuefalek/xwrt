@@ -8,19 +8,18 @@ XWRT_BIN="/usr/bin/xwrt"
 XWRT_VERSION="1.0.0"
 CTRL_PORT="9090"
 
-R='\033[91m'; G='\033[92m'; Y='\033[93m'; B='\033[96m'; N='\033[0m'
-ok()   { echo "${G}  ✓ $1${N}"; }
-info() { echo "${B}  → $1${N}"; }
-warn() { echo "${Y}  ! $1${N}"; }
-err()  { echo "${R}  ✗ $1${N}"; exit 1; }
+# Цвета через \x1b (hex) — busybox printf не поддерживает \033 (octal) в некоторых сборках
+ok()   { printf '  \x1b[92m+\x1b[0m %s\n' "$1"; }
+info() { printf '  \x1b[96m>\x1b[0m %s\n' "$1"; }
+warn() { printf '  \x1b[93m!\x1b[0m %s\n' "$1"; }
+err()  { printf '  \x1b[91mx\x1b[0m %s\n' "$1"; exit 1; }
 
-echo ""
-echo "${B}╔══════════════════════════════════════════╗"
-echo "║     xwrt installer — mihomo for OpenWRT  ║"
-echo "╚══════════════════════════════════════════╝${N}"
-echo ""
+printf '\n\x1b[96m%s\x1b[0m\n' "╔══════════════════════════════════════════╗"
+printf     '\x1b[96m%s\x1b[0m\n' "║     xwrt installer — mihomo for OpenWRT  ║"
+printf     '\x1b[96m%s\x1b[0m\n' "╚══════════════════════════════════════════╝"
+printf '\n'
 
-# ─── Архитектура ─────────────────────────────────────────────────────────────
+# ─── Определение архитектуры ─────────────────────────────────────────────────
 RAW_ARCH=$(uname -m)
 case "$RAW_ARCH" in
     x86_64)         ARCH="amd64" ;;
@@ -28,44 +27,44 @@ case "$RAW_ARCH" in
     armv7*|armv7l)  ARCH="armv7" ;;
     mipsel|mipsle)  ARCH="mipsle-softfloat" ;;
     mips)           ARCH="mips-softfloat" ;;
-    *)              err "Неизвестная архитектура: $RAW_ARCH" ;;
+    *)              err "Неизвестная архитектура: $RAW_ARCH"; exit 1 ;;
 esac
 
-info "Архитектура: ${RAW_ARCH} → mihomo-linux-${ARCH}"
-printf "${B}  ? Верно? [Y/n]: ${N}"
-read -r ARCH_OK
+info "Архитектура: ${RAW_ARCH} -> mihomo-linux-${ARCH}"
+printf '  \x1b[96m?\x1b[0m Верно? [Y/n]: '
+read -r ARCH_OK < /dev/tty
 case "$ARCH_OK" in
-    n|N) err "Прервано. Укажите архитектуру вручную." ;;
+    n|N) err "Прервано. Укажите архитектуру вручную."; exit 1 ;;
 esac
 
-echo ""
+printf '\n'
 
-# ─── Уже установлен? ─────────────────────────────────────────────────────────
+# ─── Проверяем: уже установлен? ──────────────────────────────────────────────
 MODE="install"
 if [ -f "$MIHOMO_BIN" ]; then
     CURRENT_VER=$("$MIHOMO_BIN" -v 2>/dev/null | awk '{print $3}')
     warn "mihomo уже установлен (${CURRENT_VER})"
-    printf "${B}  ? Переустановить? Конфиг будет сохранён в config.yaml.bak [y/N]: ${N}"
-    read -r REINSTALL
+    printf '  \x1b[96m?\x1b[0m Переустановить? config.yaml будет сохранён как .bak [y/N]: '
+    read -r REINSTALL < /dev/tty
     case "$REINSTALL" in
         y|Y) MODE="reinstall" ;;
         *)
-            warn "Установка отменена. Для обновления бинаря: xwrt update-bin"
+            warn "Отменено. Для обновления бинаря: xwrt update-bin"
             exit 0
             ;;
     esac
 fi
 
-echo ""
+printf '\n'
 
-# ─── Подписка ────────────────────────────────────────────────────────────────
-printf "${B}  ? Ссылка на подписку mihomo: ${N}"
-read -r SUB_URL
+# ─── Ссылка на подписку ──────────────────────────────────────────────────────
+printf '  \x1b[96m?\x1b[0m Ссылка на подписку mihomo: '
+read -r SUB_URL < /dev/tty
 [ -z "$SUB_URL" ] && err "Ссылка не может быть пустой"
 
-echo ""
+printf '\n'
 
-# ─── Бэкап конфига при переустановке ────────────────────────────────────────
+# ─── Бэкап при переустановке ─────────────────────────────────────────────────
 if [ "$MODE" = "reinstall" ]; then
     if [ -f "${MIHOMO_CFG}/config.yaml" ]; then
         cp "${MIHOMO_CFG}/config.yaml" "${MIHOMO_CFG}/config.yaml.bak"
@@ -75,18 +74,18 @@ if [ "$MODE" = "reinstall" ]; then
     "$INIT_SCRIPT" stop 2>/dev/null || true
 fi
 
-# ─── Зависимости ────────────────────────────────────────────────────────────
+# ─── Зависимости ─────────────────────────────────────────────────────────────
 info "Устанавливаем зависимости..."
 apk update -q 2>/dev/null && apk add -q curl kmod-nft-tproxy 2>/dev/null
 ok "Зависимости установлены"
 
-# ─── Скачиваем михомо ────────────────────────────────────────────────────────
+# ─── Скачиваем mihomo ────────────────────────────────────────────────────────
 info "Определяем последнюю версию mihomo..."
 LATEST=$(curl -s https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
     | grep '"tag_name"' | cut -d'"' -f4)
-[ -z "$LATEST" ] && err "Не удалось получить версию"
+[ -z "$LATEST" ] && err "Не удалось получить версию mihomo"
 
-info "Загружаем mihomo ${LATEST}..."
+info "Загружаем mihomo ${LATEST} (${ARCH})..."
 URL="https://github.com/MetaCubeX/mihomo/releases/download/${LATEST}/mihomo-linux-${ARCH}-${LATEST}.gz"
 cd /tmp || exit 1
 curl -L "$URL" -o mihomo.gz || err "Ошибка загрузки"
@@ -95,9 +94,11 @@ mv /tmp/mihomo "$MIHOMO_BIN"
 chmod +x "$MIHOMO_BIN"
 ok "mihomo ${LATEST} установлен"
 
-# ─── Конфиг ─────────────────────────────────────────────────────────────────
+# ─── Директории ──────────────────────────────────────────────────────────────
 mkdir -p "${MIHOMO_CFG}/proxy-providers"
 
+# ─── config.yaml ─────────────────────────────────────────────────────────────
+# Heredoc без кавычек: ${SUB_URL}, ${CTRL_PORT}, ${MIHOMO_CFG} подставляются здесь
 info "Создаём config.yaml..."
 cat > "${MIHOMO_CFG}/config.yaml" << YAML
 log-level: warning
@@ -152,21 +153,21 @@ proxy-providers:
       tfo: true
 
 proxy-groups:
-  - { name: "Заблок. сервисы", type: select, include-all: true }
-  - { name: "YouTube",  type: select, include-all: true, proxies: [Заблок. сервисы, DIRECT] }
-  - { name: "Discord",  type: select, include-all: true, proxies: [Заблок. сервисы, DIRECT] }
-  - { name: "Twitch",   type: select, include-all: true, proxies: [DIRECT, Заблок. сервисы] }
-  - { name: "Reddit",   type: select, include-all: true, proxies: [DIRECT, Заблок. сервисы] }
-  - { name: "Meta",     type: select, include-all: true, proxies: [Заблок. сервисы, DIRECT] }
-  - { name: "Spotify",  type: select, include-all: true, exclude-filter: "🇷🇺", proxies: [Заблок. сервисы, DIRECT] }
-  - { name: "Speedtest",type: select, include-all: true, proxies: [Заблок. сервисы, DIRECT] }
-  - { name: "Telegram", type: select, include-all: true, proxies: [Заблок. сервисы, DIRECT] }
-  - { name: "Steam",    type: select, include-all: true, proxies: [DIRECT, Заблок. сервисы] }
-  - { name: "CDN",      type: select, include-all: true, proxies: [Заблок. сервисы, PASS] }
-  - { name: "Google",   type: select, include-all: true, proxies: [PASS, Заблок. сервисы] }
-  - { name: "GitHub",   type: select, include-all: true, proxies: [PASS, Заблок. сервисы] }
-  - { name: "AI",       type: select, include-all: true, exclude-filter: "🇷🇺", proxies: [Заблок. сервисы] }
-  - { name: "Twitter",  type: select, include-all: true, proxies: [Заблок. сервисы, DIRECT] }
+  - { name: "Blocked", type: select, include-all: true }
+  - { name: "YouTube",   type: select, include-all: true, proxies: [Blocked, DIRECT] }
+  - { name: "Discord",   type: select, include-all: true, proxies: [Blocked, DIRECT] }
+  - { name: "Twitch",    type: select, include-all: true, proxies: [DIRECT, Blocked] }
+  - { name: "Reddit",    type: select, include-all: true, proxies: [DIRECT, Blocked] }
+  - { name: "Meta",      type: select, include-all: true, proxies: [Blocked, DIRECT] }
+  - { name: "Spotify",   type: select, include-all: true, exclude-filter: "RU", proxies: [Blocked, DIRECT] }
+  - { name: "Speedtest", type: select, include-all: true, proxies: [Blocked, DIRECT] }
+  - { name: "Telegram",  type: select, include-all: true, proxies: [Blocked, DIRECT] }
+  - { name: "Steam",     type: select, include-all: true, proxies: [DIRECT, Blocked] }
+  - { name: "CDN",       type: select, include-all: true, proxies: [Blocked, PASS] }
+  - { name: "Google",    type: select, include-all: true, proxies: [PASS, Blocked] }
+  - { name: "GitHub",    type: select, include-all: true, proxies: [PASS, Blocked] }
+  - { name: "AI",        type: select, include-all: true, exclude-filter: "RU", proxies: [Blocked] }
+  - { name: "Twitter",   type: select, include-all: true, proxies: [Blocked, DIRECT] }
 
 rule-providers:
   adlist@domain:       { <<: *domain,    url: https://github.com/zxc-rv/ad-filter/releases/latest/download/adlist.mrs }
@@ -208,7 +209,11 @@ rule-providers:
   vodafone@ipcidr:     { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/vodafone@ipcidr.mrs }
   vultr@ipcidr:        { <<: *ipcidr,    url: https://github.com/zxc-rv/zkeenip-rulesets/releases/latest/download/vultr@ipcidr.mrs }
   youtube@domain:      { <<: *domain,    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/youtube.mrs }
-  quic@inline:         { <<: *inline,    payload: ['AND,((DST-PORT,443),(NETWORK,UDP))'] }
+  quic@inline:
+    type: inline
+    behavior: classical
+    payload:
+      - AND,((DST-PORT,443),(NETWORK,UDP))
   user@classical:
     type: inline
     behavior: classical
@@ -218,7 +223,7 @@ rule-providers:
 rules:
   - RULE-SET,adlist@domain,REJECT
   - RULE-SET,quic@inline,REJECT-DROP
-  - OR,((DOMAIN-SUFFIX,gql.twitch.tv),(DOMAIN-SUFFIX,usher.ttvnw.net)),Заблок. сервисы
+  - OR,((DOMAIN-SUFFIX,gql.twitch.tv),(DOMAIN-SUFFIX,usher.ttvnw.net)),Blocked
   - RULE-SET,category-ai@domain,AI
   - RULE-SET,steam@domain,Steam
   - RULE-SET,spotify@domain,Spotify
@@ -230,7 +235,7 @@ rules:
   - RULE-SET,speedtest@domain,Speedtest
   - OR,((RULE-SET,meta@domain),(RULE-SET,meta@ipcidr,no-resolve)),Meta
   - OR,((RULE-SET,telegram@domain),(RULE-SET,telegram@ipcidr,no-resolve)),Telegram
-  - OR,((RULE-SET,refilter@domain),(RULE-SET,user@classical)),Заблок. сервисы
+  - OR,((RULE-SET,refilter@domain),(RULE-SET,user@classical)),Blocked
   - RULE-SET,github@domain,GitHub
   - OR,((RULE-SET,google@domain),(RULE-SET,google@ipcidr)),Google
   - RULE-SET,category-ru@domain,DIRECT
@@ -263,7 +268,7 @@ EOF
     ok "exclude.lst создан"
 fi
 
-# ─── Init script ─────────────────────────────────────────────────────────────
+# ─── /etc/init.d/mihomo ──────────────────────────────────────────────────────
 info "Создаём /etc/init.d/mihomo..."
 cat > "$INIT_SCRIPT" << 'INITEOF'
 #!/bin/sh /etc/rc.common
@@ -339,18 +344,20 @@ chmod +x "$INIT_SCRIPT"
 ok "Init script создан"
 
 # ─── xwrt ────────────────────────────────────────────────────────────────────
+# Quoted heredoc ('XWRTEOF') — без подстановок внутри.
+# Переменные ARCH, CTRL_PORT, XWRT_VERSION вставляются через sed после записи.
 info "Устанавливаем xwrt..."
-cat > "$XWRT_BIN" << XWRTEOF
+cat > "$XWRT_BIN" << 'XWRTEOF'
 #!/bin/sh
 MIHOMO_BIN="/usr/bin/mihomo"
 MIHOMO_CFG="/etc/mihomo"
-MIHOMO_API="http://127.0.0.1:${CTRL_PORT}"
+MIHOMO_API="http://127.0.0.1:__CTRL_PORT__"
 INIT="/etc/init.d/mihomo"
-ARCH="${ARCH}"
-VERSION="${XWRT_VERSION}"
+ARCH="__ARCH__"
+VERSION="__XWRT_VERSION__"
 
 _help() {
-    echo "xwrt \$VERSION — mihomo manager for OpenWRT"
+    echo "xwrt $VERSION -- mihomo manager for OpenWRT"
     echo ""
     echo "  xwrt start          Запустить"
     echo "  xwrt stop           Остановить"
@@ -362,19 +369,19 @@ _help() {
     echo "  xwrt nodebug        Выключить подробный лог"
     echo "  xwrt update-sub     Обновить подписку"
     echo "  xwrt update-rules   Обновить rule-sets"
-    echo "  xwrt update-bin     Обновить бинарник михомо"
+    echo "  xwrt update-bin     Обновить бинарник mihomo"
     echo "  xwrt version        Версии"
 }
 
-_start()   { echo "Starting...";   "\$INIT" start   && echo "OK"; }
-_stop()    { echo "Stopping...";   "\$INIT" stop    && echo "OK"; }
-_restart() { echo "Restarting..."; "\$INIT" restart && echo "OK"; }
+_start()   { echo "Starting...";   "$INIT" start   && echo "OK"; }
+_stop()    { echo "Stopping...";   "$INIT" stop    && echo "OK"; }
+_restart() { echo "Restarting..."; "$INIT" restart && echo "OK"; }
 
 _status() {
     local pid
-    pid=\$(pgrep -f "mihomo -d" 2>/dev/null)
-    if [ -n "\$pid" ]; then
-        echo "● mihomo RUNNING (pid \$pid)"
+    pid=$(pgrep -f "mihomo -d" 2>/dev/null)
+    if [ -n "$pid" ]; then
+        echo "mihomo RUNNING (pid $pid)"
         echo ""
         echo "--- nftables ---"
         nft list table inet mihomo 2>/dev/null | grep -v "^table" | head -15
@@ -382,72 +389,72 @@ _status() {
         echo "--- routing ---"
         ip rule show | grep "0x162" || echo "(no fwmark rule)"
     else
-        echo "○ mihomo STOPPED"
+        echo "mihomo STOPPED"
     fi
 }
 
-_log()   { logread | grep -i mihomo | tail -"\${1:-30}"; }
+_log()   { logread | grep -i mihomo | tail -"${1:-30}"; }
 _watch() { echo "Ctrl+C to stop..."; logread -f | grep -i mihomo; }
 
 _debug_on() {
     local res
-    res=\$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "\$MIHOMO_API/configs" \
+    res=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$MIHOMO_API/configs" \
         -H "Content-Type: application/json" -d '{"log-level":"info"}')
-    [ "\$res" = "204" ] && echo "Debug ON — run: xwrt watch" || echo "Error (HTTP \$res)"
+    [ "$res" = "204" ] && echo "Debug ON -- run: xwrt watch" || echo "Error (HTTP $res)"
 }
 
 _debug_off() {
     local res
-    res=\$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "\$MIHOMO_API/configs" \
+    res=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$MIHOMO_API/configs" \
         -H "Content-Type: application/json" -d '{"log-level":"warning"}')
-    [ "\$res" = "204" ] && echo "Debug OFF" || echo "Error (HTTP \$res)"
+    [ "$res" = "204" ] && echo "Debug OFF" || echo "Error (HTTP $res)"
 }
 
 _update_sub() {
     local res
-    res=\$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
-        "\$MIHOMO_API/providers/proxies/proxy-sub")
-    [ "\$res" = "204" ] && echo "Subscription updated" || echo "Error (HTTP \$res)"
+    res=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
+        "$MIHOMO_API/providers/proxies/proxy-sub")
+    [ "$res" = "204" ] && echo "Subscription updated" || echo "Error (HTTP $res)"
 }
 
 _update_rules() {
     local res
-    res=\$(curl -s -o /dev/null -w "%{http_code}" -X PUT "\$MIHOMO_API/providers/rules")
-    echo "Rules update triggered (HTTP \$res)"
+    res=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "$MIHOMO_API/providers/rules")
+    echo "Rules update triggered (HTTP $res)"
 }
 
 _update_bin() {
-    local latest current
-    latest=\$(curl -s https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
+    local latest current url
+    latest=$(curl -s https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
         | grep '"tag_name"' | cut -d'"' -f4)
-    current=\$("\$MIHOMO_BIN" -v 2>/dev/null | awk '{print \$3}')
-    echo "Current: \$current  Latest: \$latest"
-    [ "\$latest" = "\$current" ] && { echo "Already up to date."; return 0; }
-    "\$INIT" stop 2>/dev/null
+    current=$("$MIHOMO_BIN" -v 2>/dev/null | awk '{print $3}')
+    echo "Current: $current  Latest: $latest"
+    [ "$latest" = "$current" ] && { echo "Already up to date."; return 0; }
+    "$INIT" stop 2>/dev/null
     cd /tmp || return 1
-    local url="https://github.com/MetaCubeX/mihomo/releases/download/\${latest}/mihomo-linux-\${ARCH}-\${latest}.gz"
-    if curl -L "\$url" -o mihomo.gz && gunzip -f mihomo.gz; then
-        mv /tmp/mihomo "\$MIHOMO_BIN"
-        chmod +x "\$MIHOMO_BIN"
-        echo "Updated to \$latest"
-        "\$INIT" start
+    url="https://github.com/MetaCubeX/mihomo/releases/download/${latest}/mihomo-linux-${ARCH}-${latest}.gz"
+    if curl -L "$url" -o mihomo.gz && gunzip -f mihomo.gz; then
+        mv /tmp/mihomo "$MIHOMO_BIN"
+        chmod +x "$MIHOMO_BIN"
+        echo "Updated to $latest"
+        "$INIT" start
     else
         echo "Download failed"
-        "\$INIT" start
+        "$INIT" start
     fi
 }
 
 _version() {
-    echo "mihomo: \$(\$MIHOMO_BIN -v 2>/dev/null | awk '{print \$3, \$4, \$5}')"
-    echo "xwrt:   \$VERSION"
+    echo "mihomo: $("$MIHOMO_BIN" -v 2>/dev/null | awk '{print $3, $4, $5}')"
+    echo "xwrt:   $VERSION"
 }
 
-case "\$1" in
+case "$1" in
     start)        _start ;;
     stop)         _stop ;;
     restart)      _restart ;;
     status)       _status ;;
-    log)          _log "\$2" ;;
+    log)          _log "$2" ;;
     watch)        _watch ;;
     debug)        _debug_on ;;
     nodebug)      _debug_off ;;
@@ -458,6 +465,13 @@ case "\$1" in
     *)            _help ;;
 esac
 XWRTEOF
+
+# Подставляем переменные в сгенерированный xwrt
+sed -i \
+    -e "s|__CTRL_PORT__|${CTRL_PORT}|g" \
+    -e "s|__ARCH__|${ARCH}|g" \
+    -e "s|__XWRT_VERSION__|${XWRT_VERSION}|g" \
+    "$XWRT_BIN"
 chmod +x "$XWRT_BIN"
 ok "xwrt установлен"
 
@@ -470,14 +484,13 @@ sleep 2
 
 # ─── Итог ────────────────────────────────────────────────────────────────────
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null || echo "192.168.1.1")
-echo ""
-echo "${G}╔══════════════════════════════════════════╗"
-echo "║           Установка завершена!           ║"
-echo "╚══════════════════════════════════════════╝${N}"
-echo ""
+printf '\n\x1b[92m%s\x1b[0m\n' "╔══════════════════════════════════════════╗"
+printf     '\x1b[92m%s\x1b[0m\n' "║           Установка завершена!           ║"
+printf     '\x1b[92m%s\x1b[0m\n' "╚══════════════════════════════════════════╝"
+printf '\n'
 xwrt status
-echo ""
+printf '\n'
 ok "Веб-интерфейс: http://${LAN_IP}:${CTRL_PORT}/ui"
 ok "Управление:    xwrt help"
 ok "Исключения:    ${MIHOMO_CFG}/exclude.lst"
-echo ""
+printf '\n'

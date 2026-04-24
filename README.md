@@ -2,7 +2,7 @@
 
 Устанавливает [mihomo](https://github.com/MetaCubeX/mihomo) (Clash Meta) на роутер OpenWRT с прозрачным проксированием всех клиентов через tproxy + nftables. Весь трафик идёт через прокси автоматически — без настройки браузеров или устройств.
 
-Протестировано на OpenWRT 25.12 / Xiaomi AX3600 (aarch64).
+Протестировано на **OpenWRT 25.12 / Xiaomi AX3600 (aarch64)**.
 
 ## Установка
 
@@ -10,32 +10,38 @@
 curl -L https://raw.githubusercontent.com/tuefalek/xwrt/main/install-xwrt.sh | sh
 ```
 
+Или скачать и запустить файлом (рекомендуется — работает надёжнее через pipe):
+
+```sh
+curl -L https://raw.githubusercontent.com/tuefalek/xwrt/main/install-xwrt.sh -o /tmp/install-xwrt.sh
+sh /tmp/install-xwrt.sh
+```
+
 Скрипт задаст два вопроса: подтверждение архитектуры и ссылка на подписку.
 
 ### Требования
 
-- OpenWRT 23.05 или новее (с `apk`)
-- ~30 МБ свободного места на `/`
-- Подписка в формате mihomo/Clash Meta
+- OpenWRT 23.05+ (`apk`) или старше (`opkg`)
+- ~30 МБ свободного места
+- Подписка в формате mihomo / Clash Meta
 
 ## Что делает установщик
 
 1. Определяет архитектуру роутера (`amd64` / `arm64` / `armv7` / `mipsle-softfloat` / `mips-softfloat`)
 2. Устанавливает зависимости: `curl`, `kmod-nft-tproxy`
 3. Скачивает актуальный бинарник mihomo с GitHub
-4. Создаёт `/etc/mihomo/config.yaml` с готовыми rule-sets
-5. Создаёт procd init-скрипт `/etc/init.d/mihomo` (START=99)
-6. При старте поднимает nftables-таблицу `inet mihomo` и маршрутизацию tproxy
+4. Создаёт `/etc/mihomo/config.yaml` с готовыми rule-sets для РФ
+5. Создаёт procd init-скрипт `/etc/init.d/mihomo` (START=99, автозапуск)
+6. При старте поднимает nftables-таблицу `inet mihomo` и ip rule для tproxy
 7. Устанавливает CLI-утилиту `/usr/bin/xwrt`
-8. Включает автозапуск и запускает сервис
 
-Весь трафик клиентов (TCP + UDP) перехватывается через tproxy на порт 7893. Приватные диапазоны и клиенты из `exclude.lst` идут напрямую.
+Весь трафик клиентов (TCP + UDP) перехватывается через tproxy на порт 7893. Приватные диапазоны и адреса из `exclude.lst` идут напрямую.
 
 ## После установки
 
 1. Откройте веб-интерфейс: `http://<IP роутера>:9090/ui`
-2. В группе **"Заблок. сервисы"** выберите нужный прокси-сервер
-3. Остальные группы (YouTube, Telegram, AI…) по умолчанию наследуют этот выбор
+2. В группе **"Blocked"** выберите нужный прокси-сервер
+3. Остальные группы (YouTube, Telegram, AI…) используют этот же выбор по умолчанию
 
 ## Управление — xwrt
 
@@ -45,9 +51,9 @@ curl -L https://raw.githubusercontent.com/tuefalek/xwrt/main/install-xwrt.sh | s
 | `xwrt stop` | Остановить |
 | `xwrt restart` | Перезапустить |
 | `xwrt status` | Статус процесса, nftables, маршрутизация |
-| `xwrt log [N]` | Последние N строк лога (по умолчанию 30) |
-| `xwrt watch` | Лог в реальном времени |
-| `xwrt debug` | Включить подробный лог (уровень info) |
+| `xwrt log [N]` | Последние N строк лога (default 30) |
+| `xwrt watch` | Лог в реальном времени (Ctrl+C для выхода) |
+| `xwrt debug` | Включить подробный лог уровня info (в RAM, не на флеш) |
 | `xwrt nodebug` | Вернуть лог на уровень warning |
 | `xwrt update-sub` | Обновить прокси из подписки |
 | `xwrt update-rules` | Обновить все rule-sets |
@@ -56,7 +62,7 @@ curl -L https://raw.githubusercontent.com/tuefalek/xwrt/main/install-xwrt.sh | s
 
 ## Исключение клиентов
 
-Файл `/etc/mihomo/exclude.lst` — список IP-адресов, которые обходят прокси и ходят напрямую. Формат: один адрес или CIDR на строку, `#` — комментарий.
+Файл `/etc/mihomo/exclude.lst` — список IP-адресов и CIDR, которые обходят прокси и ходят напрямую. Формат: один адрес на строку, `#` — комментарий.
 
 ```
 # Телевизор и игровая консоль — без прокси
@@ -67,11 +73,11 @@ curl -L https://raw.githubusercontent.com/tuefalek/xwrt/main/install-xwrt.sh | s
 192.168.2.0/24
 ```
 
-После изменения файла выполните `xwrt restart`.
+После изменения файла: `xwrt restart`.
 
 ## Свои правила маршрутизации
 
-В `config.yaml` есть секция `user@classical` (тип `inline`) — добавляйте сюда домены и IP, которые должны идти через группу **"Заблок. сервисы"**:
+В `config.yaml` секция `user@classical` — добавляйте домены и IP, которые должны идти через прокси:
 
 ```yaml
   user@classical:
@@ -80,30 +86,43 @@ curl -L https://raw.githubusercontent.com/tuefalek/xwrt/main/install-xwrt.sh | s
     payload:
       - DOMAIN-SUFFIX,example.com
       - DOMAIN-SUFFIX,2ip.io
-      - IP-CIDR,1.2.3.4/32
+      - IP-CIDR,1.2.3.4/32,no-resolve
 ```
 
-После изменения конфига выполните `xwrt restart`.
+После изменения конфига: `xwrt restart`.
 
 ## Уровни логирования
 
-По умолчанию mihomo работает с `log-level: warning` — логи не пишутся постоянно, flash-память не изнашивается. Для диагностики:
+По умолчанию `log-level: warning` — логи почти не пишутся, flash-память не изнашивается. Для диагностики:
 
 ```sh
-xwrt debug   # переключить на info (через API, без перезапуска)
-xwrt watch   # смотреть лог в реальном времени
+xwrt debug   # переключить на info (через API, без перезапуска, в RAM)
+xwrt watch   # смотреть поток логов в реальном времени
 xwrt nodebug # вернуть warning
 ```
 
 ## Поддерживаемые архитектуры
 
-| Роутер / платформа | uname -m | mihomo |
+| Платформа | `uname -m` | mihomo бинарь |
 |---|---|---|
-| x86_64 (PC, VM) | `x86_64` | `amd64` |
-| Xiaomi AX3600, RPi 4, большинство современных | `aarch64` | `arm64` |
-| Старые ARM роутеры | `armv7l` | `armv7` |
+| x86_64 (PC, VM, x86 роутер) | `x86_64` | `amd64` |
+| Qualcomm IPQ8071A, RPi 4, AArch64 | `aarch64` | `arm64` |
+| Xiaomi AX3600, большинство современных | `aarch64` | `arm64` |
+| Старые ARM (Cortex-A7/A9) | `armv7l` | `armv7` |
 | MIPS little-endian (MT7620, MT7621) | `mipsel` | `mipsle-softfloat` |
 | MIPS big-endian (AR9xxx, QCA9xxx) | `mips` | `mips-softfloat` |
+
+## Технические детали
+
+**TProxy + nftables:**
+- nftables таблица `inet mihomo`, цепочка `prerouting` (priority mangle)
+- tproxy на порт 7893, fwmark `0x162`
+- ip rule: `fwmark 0x162 → table 100`; ip route table 100: `local default via lo`
+- защита от петли через fwmark check
+
+**DNS:** mihomo слушает на 0.0.0.0:7874 в режиме fake-ip (198.18.0.0/16). DNS роутера не трогается.
+
+**Запись на флеш:** только при обновлении подписки (~раз в час) и rule-sets (~раз в сутки). Постоянной записи нет.
 
 ## Удаление
 
@@ -114,4 +133,4 @@ rm /usr/bin/mihomo /usr/bin/xwrt /etc/init.d/mihomo
 rm -rf /etc/mihomo
 ```
 
-Нftables-таблица и маршруты удаляются автоматически при `xwrt stop`.
+nftables-таблица и ip rule удаляются автоматически при `xwrt stop`.
