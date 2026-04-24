@@ -7,13 +7,13 @@
 ## Установка
 
 ```sh
-curl -L https://raw.githubusercontent.com/tuefalek/xwrt/main/install-xwrt.sh | sh
+curl -sL https://raw.githubusercontent.com/tuefalek/xwrt/main/install-xwrt.sh | sh
 ```
 
-Или скачать и запустить файлом (рекомендуется — работает надёжнее через pipe):
+Или скачать и запустить файлом (работает надёжнее через pipe):
 
 ```sh
-curl -L https://raw.githubusercontent.com/tuefalek/xwrt/main/install-xwrt.sh -o /tmp/install-xwrt.sh
+curl -sL https://raw.githubusercontent.com/tuefalek/xwrt/main/install-xwrt.sh -o /tmp/install-xwrt.sh
 sh /tmp/install-xwrt.sh
 ```
 

@@ -88,7 +88,7 @@ LATEST=$(curl -s https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
 info "Загружаем mihomo ${LATEST} (${ARCH})..."
 URL="https://github.com/MetaCubeX/mihomo/releases/download/${LATEST}/mihomo-linux-${ARCH}-${LATEST}.gz"
 cd /tmp || exit 1
-curl -L "$URL" -o mihomo.gz || err "Ошибка загрузки"
+curl -sL "$URL" -o mihomo.gz || err "Ошибка загрузки"
 gunzip -f mihomo.gz
 mv /tmp/mihomo "$MIHOMO_BIN"
 chmod +x "$MIHOMO_BIN"
@@ -483,7 +483,8 @@ info "Запускаем mihomo..."
 sleep 2
 
 # ─── Итог ────────────────────────────────────────────────────────────────────
-LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null || echo "192.168.1.1")
+LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d'/' -f1)
+[ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
 printf '\n\x1b[92m%s\x1b[0m\n' "╔══════════════════════════════════════════╗"
 printf     '\x1b[92m%s\x1b[0m\n' "║           Установка завершена!           ║"
 printf     '\x1b[92m%s\x1b[0m\n' "╚══════════════════════════════════════════╝"
