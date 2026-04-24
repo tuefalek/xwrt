@@ -3,8 +3,9 @@
 
 MIHOMO_BIN="/usr/bin/mihomo"
 MIHOMO_CFG="/etc/mihomo"
-MIHOMO_API="http://127.0.0.1:9090"
 INIT="/etc/init.d/mihomo"
+_LAN_IP=$(ip addr show br-lan 2>/dev/null | awk '/inet /{split($2,a,"/"); print a[1]; exit}')
+MIHOMO_API="http://${_LAN_IP:-127.0.0.1}:9090"
 TEMPLATES_DIR="/etc/mihomo/templates"
 SUB_FILE="/etc/mihomo/sub.txt"
 MODE_FILE="/etc/mihomo/mode.txt"
@@ -83,21 +84,26 @@ _debug_off() {
     [ "$res" = "204" ] && echo "Debug OFF" || echo "Error (HTTP $res)"
 }
 
-# Применить шаблон: подставить URL из sub.txt в __SUB_URL__
+# Применить шаблон: подставить __SUB_URL__ и __LAN_IP__
 # Использует awk split — безопасно для URL со спецсимволами (& / \ etc)
 _apply_template() {
     local template="$1"
     local output="$2"
-    local url
+    local url lan_ip
     url=$(tr -d '\r\n' < "$SUB_FILE" 2>/dev/null)
     [ -z "$url" ] && { echo "Error: $SUB_FILE is empty"; return 1; }
     [ ! -f "$template" ] && { echo "Error: template not found: $template"; return 1; }
+    lan_ip=$(ip addr show br-lan 2>/dev/null | awk '/inet /{split($2,a,"/"); print a[1]; exit}')
+    [ -z "$lan_ip" ] && { echo "Error: cannot detect br-lan IP"; return 1; }
 
-    awk -v url="$url" '
+    awk -v url="$url" -v lan_ip="$lan_ip" '
     {
         n = split($0, parts, "__SUB_URL__")
         line = parts[1]
         for (i = 2; i <= n; i++) line = line url parts[i]
+        n = split(line, parts, "__LAN_IP__")
+        line = parts[1]
+        for (i = 2; i <= n; i++) line = line lan_ip parts[i]
         print line
     }' "$template" > "$output"
 }
