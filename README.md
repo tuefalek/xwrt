@@ -1,4 +1,4 @@
-# xwrt — прозрачный прокси для OpenWRT на базе mihomo
+# xWRT — простая устновка/обновление/управление Mihomo на OpenWRT
 
 Устанавливает [mihomo](https://github.com/MetaCubeX/mihomo) (Clash Meta) на роутер OpenWRT с прозрачным проксированием через tproxy + nftables. Трафик идёт через прокси автоматически — без настройки браузеров или устройств.
 
@@ -111,7 +111,7 @@ xwrt nodebug # вернуть warning
 
 ## Совместимость с zapret
 
-[zapret](https://github.com/bol-van/zapret) и xwrt работают одновременно без конфликтов:
+[[zapret](https://github.com/bol-van/zapret)](https://github.com/remittor/zapret-openwrt) и xWRT работают одновременно без конфликтов:
 
 - **mihomo** (приоритет mangle, до routing decision) перехватывает трафик в PREROUTING и направляет его через VPN-туннель или помечает как DIRECT
 - **zapret** работает в цепочках FORWARD/OUTPUT (приоритет filter, после mangle) и применяет DPI-обход к DIRECT-трафику, который mihomo не взял в туннель
@@ -179,8 +179,8 @@ nftables-таблица и ip rule удаляются автоматически
 
 ---
 
-## Thanks
+## Благодарности
 
-- [zxc-rv/assets](https://github.com/zxc-rv/assets) — шаблоны конфигов mihomo и rule-sets для РФ
-- [jameszeroX/XKeen](https://github.com/jameszeroX/XKeen) — вдохновение и архитектурные идеи
-- [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) — ядро прокси
+- [zxc-rv/assets](https://github.com/zxc-rv/assets) — @zxc-rv за шаблоны конфигов Mihomo и rule-sets для РФ
+- [jameszeroX/XKeen](https://github.com/jameszeroX/XKeen) — @jameszeroX вдохновение и архитектурные идеи
+- [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) — @MetaCubeX за замечательное ядро Mihomo, отдельный респект за добавление поддержки xHTTP
