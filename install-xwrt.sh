@@ -55,6 +55,16 @@ fi
 
 printf '\n'
 
+# ─── LAN IP роутера ──────────────────────────────────────────────────────────
+DETECTED_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d'/' -f1)
+[ -z "$DETECTED_IP" ] && DETECTED_IP="192.168.1.1"
+printf '  \x1b[96m?\x1b[0m Адрес роутера [%s]: ' "$DETECTED_IP"
+read -r LAN_IP < /dev/tty
+[ -z "$LAN_IP" ] && LAN_IP="$DETECTED_IP"
+ok "Адрес роутера: $LAN_IP"
+
+printf '\n'
+
 # ─── Ссылка на подписку ──────────────────────────────────────────────────────
 EXISTING_SUB=$(cat "${MIHOMO_CFG}/sub.txt" 2>/dev/null)
 if [ -n "$EXISTING_SUB" ] && [ "$MODE_INSTALL" = "reinstall" ]; then
@@ -137,11 +147,14 @@ printf '%s\n' "$SUB_URL" > "${MIHOMO_CFG}/sub.txt"
 printf '%s\n' "$MODE_INPUT" > "${MIHOMO_CFG}/mode.txt"
 
 info "Генерируем config.yaml (режим: ${MODE_INPUT})..."
-awk -v url="$SUB_URL" '
+awk -v url="$SUB_URL" -v lan_ip="$LAN_IP" '
 {
     n = split($0, parts, "__SUB_URL__")
     line = parts[1]
     for (i = 2; i <= n; i++) line = line url parts[i]
+    n = split(line, parts, "__LAN_IP__")
+    line = parts[1]
+    for (i = 2; i <= n; i++) line = line lan_ip parts[i]
     print line
 }' "${MIHOMO_CFG}/templates/config-${MODE_INPUT}.yaml" > "${MIHOMO_CFG}/config.yaml" \
     || err "Ошибка генерации config.yaml"
@@ -258,9 +271,6 @@ info "Запускаем mihomo..."
 sleep 2
 
 # ─── Итог ────────────────────────────────────────────────────────────────────
-LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d'/' -f1)
-[ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
-
 printf '\n\x1b[92m%s\x1b[0m\n' "╔══════════════════════════════════════════╗"
 printf     '\x1b[92m%s\x1b[0m\n' "║           Установка завершена!           ║"
 printf     '\x1b[92m%s\x1b[0m\n' "╚══════════════════════════════════════════╝"

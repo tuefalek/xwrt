@@ -4,7 +4,7 @@
 MIHOMO_BIN="/usr/bin/mihomo"
 MIHOMO_CFG="/etc/mihomo"
 INIT="/etc/init.d/mihomo"
-_LAN_IP=$(ip addr show br-lan 2>/dev/null | awk '/inet /{split($2,a,"/"); print a[1]; exit}')
+_LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d'/' -f1)
 MIHOMO_API="http://${_LAN_IP:-127.0.0.1}:9090"
 TEMPLATES_DIR="/etc/mihomo/templates"
 SUB_FILE="/etc/mihomo/sub.txt"
@@ -93,8 +93,8 @@ _apply_template() {
     url=$(tr -d '\r\n' < "$SUB_FILE" 2>/dev/null)
     [ -z "$url" ] && { echo "Error: $SUB_FILE is empty"; return 1; }
     [ ! -f "$template" ] && { echo "Error: template not found: $template"; return 1; }
-    lan_ip=$(ip addr show br-lan 2>/dev/null | awk '/inet /{split($2,a,"/"); print a[1]; exit}')
-    [ -z "$lan_ip" ] && { echo "Error: cannot detect br-lan IP"; return 1; }
+    lan_ip=$(uci get network.lan.ipaddr 2>/dev/null | cut -d'/' -f1)
+    [ -z "$lan_ip" ] && { echo "Error: cannot detect LAN IP via uci"; return 1; }
 
     awk -v url="$url" -v lan_ip="$lan_ip" '
     {
