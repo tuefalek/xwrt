@@ -143,7 +143,7 @@ curl -sL "${REPO}/templates/config-direct.yaml" \
 ok "Шаблоны установлены"
 
 # ─── Сохраняем подписку и применяем шаблон ───────────────────────────────────
-printf '%s\n' "$SUB_URL" > "${MIHOMO_CFG}/sub.txt"
+[ "$SUB_URL" != "$EXISTING_SUB" ] && printf '%s\n' "$SUB_URL" > "${MIHOMO_CFG}/sub.txt"
 printf '%s\n' "$MODE_INPUT" > "${MIHOMO_CFG}/mode.txt"
 
 info "Генерируем config.yaml (режим: ${MODE_INPUT})..."
