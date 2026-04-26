@@ -1,20 +1,12 @@
 # xWRT — простой менеджер для Mihomo под OpenWRT
 
 Устанавливает [mihomo](https://github.com/MetaCubeX/mihomo) (Clash Meta) на роутер OpenWRT с прозрачным проксированием через tproxy + nftables. Трафик идёт через прокси автоматически — без настройки браузеров или устройств.
-
-Протестировано на **OpenWRT 25.12 / Xiaomi AX3600 (aarch64)**.
+Если вы желаете управлять сервисом из LUCI, то используйте [luci-xwrt]{https://github.com/tuefalek/luci-xwrt)
 
 ## Установка
 
 ```sh
 curl -sL https://raw.githubusercontent.com/tuefalek/xwrt/main/install-xwrt.sh | sh
-```
-
-Или скачать файлом (надёжнее при нестабильном соединении):
-
-```sh
-curl -sL https://raw.githubusercontent.com/tuefalek/xwrt/main/install-xwrt.sh -o /tmp/install-xwrt.sh
-sh /tmp/install-xwrt.sh
 ```
 
 Скрипт задаст три вопроса: подтверждение архитектуры, ссылка на подписку, режим работы.
@@ -27,12 +19,13 @@ sh /tmp/install-xwrt.sh
 
 ## Режимы работы
 
+В пакете идут два преднастроенных шаблона конфигурации mihomo.
 | Режим | Описание |
 |---|---|
 | `vpn` | Весь трафик через VPN, кроме российских сайтов (`category-ru`) |
 | `direct` | Только заблокированные сайты через VPN, остальное — напрямую |
 
-Переключение в любой момент без переустановки:
+Выбор шаблона (скрипт пересоздаст конфиг из выбранного шаблона, старый конфиг будет заменен):
 
 ```sh
 xwrt mode vpn
@@ -57,10 +50,10 @@ xwrt mode direct
 | `xwrt watch` | Лог в реальном времени |
 | `xwrt debug` | Включить подробный лог info (в RAM, без перезапуска) |
 | `xwrt nodebug` | Вернуть лог на уровень warning |
-| `xwrt mode vpn` | Переключиться в режим VPN |
-| `xwrt mode direct` | Переключиться в режим Direct |
+| `xwrt mode vpn` | Пересоздать конфиг из шаблона VPN |
+| `xwrt mode direct` | Пересоздать конфиг из шаблона Direct |
 | `xwrt sub` | Показать текущую ссылку на подписку |
-| `xwrt sub <url>` | Обновить подписку и перегенерировать конфиг |
+| `xwrt sub <url>` | Обновить подписку в конфиге и перезагрузить ядро |
 | `xwrt update-sub` | Перезагрузить подписку через API (без рестарта) |
 | `xwrt update-rules` | Обновить все rule-sets |
 | `xwrt update-bin` | Обновить бинарник mihomo до последней версии |
@@ -111,7 +104,7 @@ xwrt nodebug # вернуть warning
 
 ## Совместимость с zapret
 
-[[zapret](https://github.com/bol-van/zapret)](https://github.com/remittor/zapret-openwrt) и xWRT работают одновременно без конфликтов:
+[[zapret](https://github.com/remittor/zapret-openwrt)] и xWRT работают одновременно без конфликтов:
 
 - **mihomo** (приоритет mangle, до routing decision) перехватывает трафик в PREROUTING и направляет его через VPN-туннель или помечает как DIRECT
 - **zapret** работает в цепочках FORWARD/OUTPUT (приоритет filter, после mangle) и применяет DPI-обход к DIRECT-трафику, который mihomo не взял в туннель
