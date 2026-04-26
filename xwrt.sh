@@ -27,7 +27,7 @@ _help() {
     echo "  xwrt mode direct      Режим: только заблокированное через VPN"
     echo ""
     echo "  xwrt sub              Показать текущую ссылку на подписку"
-    echo "  xwrt sub <url>        Обновить ссылку и перегенерировать конфиг"
+    echo "  xwrt sub <url>        Сохранить ссылку и перезагрузить подписку через API"
     echo "  xwrt update-sub       Перезагрузить подписку через API (без рестарта)"
     echo "  xwrt update-rules     Обновить rule-sets через API"
     echo "  xwrt update-bin       Обновить бинарник mihomo"
@@ -148,9 +148,9 @@ _sub_cmd() {
     local mode
     mode=$(cat "$MODE_FILE" 2>/dev/null)
     if [ -n "$mode" ]; then
-        echo "Applying to current mode ($mode)..."
         _apply_template "${TEMPLATES_DIR}/config-${mode}.yaml" "${MIHOMO_CFG}/config.yaml" || return 1
-        _restart
+        echo "Config updated (mode: $mode)"
+        _update_sub
     else
         echo "No mode set. Run: xwrt mode vpn|direct"
     fi
