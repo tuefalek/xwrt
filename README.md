@@ -1,7 +1,7 @@
 # xWRT — простой менеджер для Mihomo под OpenWRT
 
 Устанавливает [mihomo](https://github.com/MetaCubeX/mihomo) (Clash Meta) на роутер OpenWRT с прозрачным проксированием через tproxy + nftables. Трафик идёт через прокси автоматически — без настройки браузеров или устройств.
-Если вы желаете управлять сервисом из LUCI, то используйте [luci-xwrt]{https://github.com/tuefalek/luci-xwrt)
+Если вы желаете управлять сервисом из LUCI, то используйте [luci-xwrt](https://github.com/tuefalek/luci-xwrt)
 
 ## Установка
 
