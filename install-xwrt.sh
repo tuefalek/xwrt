@@ -203,6 +203,9 @@ _routing_down() {
 }
 
 _nft_up() {
+    local lan_iface
+    lan_iface=$(uci get network.lan.device 2>/dev/null || uci get network.lan.ifname 2>/dev/null)
+
     nft add table inet mihomo
     nft add chain inet mihomo prerouting \
         '{ type filter hook prerouting priority mangle; policy accept; }'
@@ -228,11 +231,11 @@ _nft_up() {
 
     # Приватные диапазоны — напрямую
     nft add rule inet mihomo prerouting \
-        ip daddr '{ 0.0.0.0/8, 10.0.0.0/8, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/3 }' return
+        ip daddr '{ 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/3 }' return
 
-    # Всё остальное → tproxy на mihomo
+    # Трафик от LAN-клиентов → tproxy на mihomo
     nft add rule inet mihomo prerouting \
-        meta l4proto '{ tcp, udp }' tproxy ip to :7893 meta mark set "$FWMARK"
+        iifname "$lan_iface" meta l4proto '{ tcp, udp }' tproxy ip to :7893 meta mark set "$FWMARK"
 }
 
 _nft_down() {
